@@ -1,0 +1,154 @@
+---
+title: "EHM - Prognose der Besucherzahlen"
+author: "Christina Mädge"
+date: "3 6 2020"
+output: html_document
+---
+
+```{r echo = FALSE, message=FALSE, error=FALSE, warning=FALSE}
+rm(list=ls()) # Lösche alle Variablen
+library(tidyverse) # Datenaufbereitung und ggplot
+library(lubridate) # Umgang mit Datum und Zeit
+library(GGally) # Wird benötigt für die Erstellung des correlograms
+library(e1071) # Wird für Support Vector Machines benötigt
+```
+
+# Management Summary
+
+...
+
+# 1 Allgemeine Projektinformationen
+
+## 1.1 Ausgangslage
+Die Prognose von Umsätzen (/Besucherzahlen) des Europäischen Hansemuseums (EHM) ist bislang seitens der Institution nicht behandelt worden. Eine systematische Planung unter Einbeziehung von Mustern findet nicht eingeschränkt statt, wenngleich das EHM daran sehr interessiert ist. 
+
+## 1.2 Zielsetzung 
+Es werden verschiedene einfache und komplexe Modelle getestet, dabei werden auch Techniken aus den Bereichen Machine Learning und Deep Learning angewendet. 
+
+**Lösungsansatz**
+
+Mit Hilfe von verschiedenen Daten und Einflussfaktoren sollen die Umsätze des EHM prognostiziert werden. 
+
+*	Umsatzdaten, Wetterdaten, Veranstaltungsdaten
+*	Weitere Einflussfaktoren (Wochentage, Feiertage, Ferien,…)
+
+## 1.3 Datenbasis
+
+Untersucht werden Daten für die Jahre 2015 bis 2020. Es liegen für diesen Zeitraum als Rohdaten folgende Datensätze vor:
+
+*	Umsatz je Tag
+* Daten zur Kieler Woche
+* Daten zu Feiertagen in den Bundesländern
+* Daten zu Feiertagen
+* Daten zu den Jahreszeiten
+* ...
+
+* Wetterdaten 
+
+# 2 Datenexploration
+
+## 2.1 Einlesen der Daten
+
+Im ersten Schritt müssen die Daten zunächst eingelesen werden um sie bearbeiten zu können:
+```{r message=FALSE}
+# mit read_csv einlesen um eine Veränderung der Datentypen (bzw. eine Faktorisierung) zu verhindern!
+library(readxl)
+Umsatz <- read_excel("Daten/Umsatz.xlsx")
+Tickets <- read_excel("Daten/Tickets.xlsx")
+
+```
+
+## 2.2 Überprüfung der Datenstrukturen
+
+* Datensatz **Beispieldaten**
+```{r}
+str(Umsatz)
+glimpse(Umsatz)
+range(Umsatz$Umsatz)
+```
+
+Der Datensatz **Umsatz** ist ein Dataframe, enthält 1747 Zeilen und 3 Variablen:
+
+* Datum (`dttm`)
+* Wochentag (`chr`) mit den Warengruppen 1 - 6
+* Umsatz (`dbl`) mit Werten zwischen 0 und 8728 €.
+
+* Datensatz **Tickets**
+```{r}
+str(Tickets)
+glimpse(Tickets)
+range(Tickets$Tickets)
+```
+
+Der Datensatz **Tickets** enthält ebenfalls 1747 Zeilen und die Variablen Datum (`dttm`), Wochentag (`chr`) und Tickets (`dbl`) mit Werten zwischen 0 und 1108.
+
+## 2.3 Überprüfung des Anfangs- und Endzeitpunkt der Datumsattribute in den Datensätzen
+```{r}
+range(Umsatz$Datum)
+range(Tickets$Datum)
+```
+
+Die Daten beider Datensätze reichen vom 29.05.2015 bis 14.03.2020.
+
+## 2.4 Überprüfung der Datensätze auf fehlende Werte
+
+### Überprüfung auf "klassische" fehlende Werte (NA)
+Zunächst einmal wird geprüft, welche klassischen fehlenden Werte (NA) in den einzelnen Datensätzen vorhanden sind:
+```{r}
+sum(is.na(Umsatz))   
+sum(is.na(Tickets))  
+```
+
+Die Datensätze sind vollständig.
+
+> Anmerkung: Vollständig im Sinne von es gibt keine fehlenden Werte in der Tabelle. Es gibt einen Tag, an dem das Museum nicht geöffnet hat und der dementsprechend fehlt (24.12. Heiligabend).
+
+## 2.5 Überprüfung der Datensätze auf Ausreißer
+
+Ein Ausreißer ist ein Wert, der außerhalb der üblichen Struktur einer Verteilung liegt. Zunächst wird in einem ersten Schritt mittels einer Visualisierung in Form von `boxplots` überprüft, ob die einzelnen Datensätze überhaupt Ausreißer enthalten.
+
+Ein Boxplot zeigt uns den Median (dicke Linie) sowie das untere und obere Quartil (als Box). Der Abstand von unterem zu oberem Quartil (interquartile range: IQR) wird standardmäßig mit 1.5 multipliziert. Und genau über die auf diese Art ermittelte Spannweite erstrecken sich die sogenannten whiskers maximal, wobei die whiskers unten und oben an der Box ansetzen. Gibt es darüber hinaus noch Werte, die weiter außerhalb liegen, werden diese als Ausreißer durch Punkte gekennzeichnet.
+
+Die Überprüfung wird begonnen mit dem Datensatz **Umsatz**: 
+
+```{r}
+# Überprüfung der Variable Umsatz
+summary(Umsatz$Umsatz)
+boxplot(Umsatz$Umsatz)
+hist(Umsatz$Umsatz)
+
+# Visualisierung
+Umsatz %>% 
+  dplyr::select(Umsatz) %>% 
+  ggplot(aes(Umsatz)) +
+  geom_density()
+```
+
+Das Attribut `Umsatz` enthält zahlreiche Ausreißer. Mit bloßem Auge ist nicht zu erkennen, wie viele Ausreißer es genau sind. Die Ausreißer werden also in einem 2. Schritt genauer betrachtet, um die genaue Anzahl der Ausreißer zu ermitteln. Statistiker haben viele Verfahren entwickelt, um auseinanderzuhalten, was man als Ausreißer bezeichnen sollte, und was nicht. 
+
+Wir verwenden - wie bereits erwähnt - die Standardeinstellung, die aus einer Definition von John W. Tukey stammt: Sie definiert einen Ausreißer als einen Punkt, der mehr als $$1,5 * IQR$$ vom unteren bzw. oberen Quartil abweicht. Anders gesagt liegen untere Ausreißer unterhalb
+
+$$Q_1 - 1,5 * IQR$$
+und obere Ausreißer oberhalb 
+
+$$Q_3 + 1.5 * IQR$$
+
+Vereinfachend untersuchen wir nun die Umsatzvariable insgesamt auf Ausreißer, wobei wir zunächst nicht nach Warengruppen trennen:
+
+```{r}
+g_oben <- quantile(Umsatz$Umsatz, probs=0.75) + (1.5*IQR(Umsatz$Umsatz)) #Obere Grenze fuer Ausreißer
+g_oben
+
+Umsatz %>%
+  dplyr::select(Umsatz) %>%
+  filter(Umsatz > g_oben) %>%
+  summarise(n = n())
+```
+Die obere Grenze für Ausreißer liegt demzufolge bei 4413,19€ (gerundet). Es gibt insgesamt 41 Ausreißer in der Variable `Umsatz`. In einem 3. Schritt betrachten wir, an welchen Daten diese Ausreißer auftreten und ob Muster erkennbar sind (z. B. überproportional hohe Umsätze an Ostern oder anderen Feiertagen, in den Ferien, während der Kieler Woche o. Ä.):
+
+```{r}
+Umsatz %>%
+  dplyr::select(Datum, Umsatz) %>%
+  filter(Umsatz > g_oben) 
+```
+
