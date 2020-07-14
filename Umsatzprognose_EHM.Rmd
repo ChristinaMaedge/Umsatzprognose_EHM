@@ -320,7 +320,6 @@ Wetter <- read_csv2("Daten/Wetterdaten.csv")
 Tickets2 <- Tickets %>%
   select(Tickets, Datum)
 
-
 # Vereinigung der Datensätze
 df_complete <- left_join(Umsatz, Tickets2, by = "Datum")
 df_complete <- left_join(df_complete, ChristiHimmelfahrt, by = "Datum")
@@ -410,6 +409,10 @@ Es besteht die Möglichkeit, dass es unterhalb der Wochentag keine großen Unter
 df_complete <- df_complete %>% mutate(Wochenende = recode(Wochentag, "1" = "1", "2" = "0", "3" = "0", "4" = "0", "5" = "0", "6" = "0", "7" = "1"))
 
 df_complete <- df_complete %>% mutate(Wochenende = as.numeric(Wochenende))
+
+library(writexl)
+write.csv(df_complete, "Daten/Datensatz_komplett.csv")
+write_xlsx(df_complete, "Daten/Datensatz_komplett.xlsx")
 ```
 
 # 4 Deskriptive Analysen
