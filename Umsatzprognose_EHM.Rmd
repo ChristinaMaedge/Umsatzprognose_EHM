@@ -45,7 +45,7 @@ Seitens des EHM wurden Daten aus ihrem Kassensystem für die Jahre 2015 bis 2020
 
 Weiterhin wurden folgende Daten für die Analyse potentieller Einflussfaktoren recherchiert bzw. erhoben und jeweils ein Datensatz erstellt: 
 
-* Wetterdaten
+* [Wetterdaten](https://server.wettermail.de/opendata-dwd/cgi-bin/klima2.pl?action=showStationComplete&stationId=3086)
   + maximale Temperatur
   + minimale Temperatur
   + Durchschnittstemperatur
@@ -53,7 +53,7 @@ Weiterhin wurden folgende Daten für die Analyse potentieller Einflussfaktoren r
   + Sonnenstunden
   + Windstärke (Beaufort)
 * Daten zur Kieler Woche
-* Daten zu Ferientagen in den Bundesländern
+* Daten zu sommerferientagen in den Bundesländern
   + Baden-Württemberg
   + Bayern
   + Hessen
@@ -123,6 +123,10 @@ Zunächst einmal wird geprüft, welche klassischen fehlenden Werte (NA) in den e
 ```{r}
 sum(is.na(Umsatz))   
 sum(is.na(Tickets))  
+#sum(is.na(df_complete))
+
+#which(is.na(df_complete$Windmax_BF))
+#which(is.na(df_complete$Niederschlag))
 ```
 
 Die Datensätze sind vollständig.
@@ -310,7 +314,8 @@ Sommer <- read_csv2("Daten/Sommer.csv")
 TDE <- read_csv2("Daten/TdDE.csv")
 Weihnachten <- read_csv2("Daten/Weihnachten.csv")
 Winter <- read_csv2("Daten/Winter.csv")
-Wetter <- read_csv2("Daten/Wetterdaten.csv")
+Wetter <- read_xlsx("Daten/Wetterdaten.xlsx")
+
 ```
  Da die Wetterdaten 
 
@@ -408,12 +413,39 @@ Es besteht die Möglichkeit, dass es unterhalb der Wochentag keine großen Unter
 ```{r}
 df_complete <- df_complete %>% mutate(Wochenende = recode(Wochentag, "1" = "1", "2" = "0", "3" = "0", "4" = "0", "5" = "0", "6" = "0", "7" = "1"))
 
+df_complete <- df_complete %>% mutate(Windmax_BF = as.numeric(Windmax_BF))
+
 df_complete <- df_complete %>% mutate(Wochenende = as.numeric(Wochenende))
+df_complete <- df_complete %>% mutate(Sonnenstunden = round(Sonnenstunden, 0))
+
 
 library(writexl)
 write.csv(df_complete, "Daten/Datensatz_komplett.csv")
 write_xlsx(df_complete, "Daten/Datensatz_komplett.xlsx")
 ```
+
+Für die Erstellung künstlicher neuronaler Netze (KNN) wird ein separater Datensatz erstellt:
+```{r}
+Datensatz_KNN <- df_complete %>% filter(Jahr >= 2016 & Jahr <= 2019)
+
+Datensatz_KNN <- Datensatz_KNN %>%
+  select(-Fruehling, -Herbst, -Sommer, -Winter, -Wochentag, -Monat, -Jahr, - Ostern_ext, -Pfingsten_ext)
+
+glimpse(Datensatz_KNN)
+
+write_excel_csv(Datensatz_KNN, "Daten/Datensatz_KNN.csv")
+write_xlsx(Datensatz_KNN, "Daten/Datensatz_KNN.xlsx")
+```
+
+
+## 3.8 Kategorisierung der Wettervariablen
+
+Für manche Analysen ist es sinnvoll, numerische Variablen in Rohdatenform zu klassifizieren bzw. ihnen Klassen zuzuordnen. Insofern werden die Wettervariablen auch über die Rohdatenwerte hinaus als diskrete Variablen in Form von Klassen abgebildet. 
+
+Die einfachste Umwandlung von Rohdaten zu Klassen erfolgt bei der Variable Windstärke, gemessen in Beaufort, da es hierfür eine eindeutig definierte Einteilung gibt:
+
+![](Daten/Windstaerke_Beaufort_Klassifikation.png)
+
 
 # 4 Deskriptive Analysen
 
@@ -678,6 +710,7 @@ Besucher_jahr
 Zu beobachten ist, dass der Jahresumsatz von 2014 bis 2016 sukzessive sinkt und dann 2017 stabil bleibt. Um diese Beobachtung besser zu verstehen, betrachten wir den Umsatz nun auf Monatsebene, immer noch aggregiert über alle Warengruppen.
 
 ```{r}
+Sonnenstunden_jahr_monat <- df_complete %>% mutate(Jahr=as.character(Jahr)) %>% group_by(Jahr, Monat) %>% summarise(Sonnenstunden_Monat=sum(Sonnenstunden))
 Besucher_jahr_monat <- df_complete %>% mutate(Jahr=as.character(Jahr)) %>% group_by(Jahr, Monat) %>% summarise(Besucher=sum(Tickets)) # Variable Jahr in character umgewandelt, damit im folgenden Plot eine diskrete Farbskala in der Legende gezeigt werden kann
 
 p_Besucher_jahr_monat <- ggplot(data = Besucher_jahr_monat, aes(x = Monat, y = Besucher)) +
@@ -707,11 +740,1048 @@ p_Besucher_jahr_monat <- ggplot(data = Besucher_jahr_monat, aes(x = Monat, y = B
 p_Besucher_jahr_monat
 ```
 
+
+
+
+```{r}
+Sonnenstunden_jahr_monat <- df_complete %>% mutate(Jahr=as.character(Jahr)) %>% group_by(Jahr, Monat) %>% summarise(Sonnenstunden_Monat=sum(Sonnenstunden))
+# Variable Jahr in character umgewandelt, damit im folgenden Plot eine diskrete Farbskala in der Legende gezeigt werden kann
+
+p_Sonnenstunden_jahr_monat <- ggplot(data = Sonnenstunden_jahr_monat, aes(x = Monat, y = Sonnenstunden_Monat)) +
+  geom_point(aes(color = Jahr), size = 3, alpha = 0.5) +
+  geom_line(aes(group = Jahr, color = Jahr)) + 
+  scale_x_discrete(limits=c("1","2","3","4","5","6","7","8","9","10","11","12")) +
+  xlab("Monat") + ylab("Sonnenstunden") + 
+  labs(color = "Jahr") +
+  theme_classic() +
+  ggtitle("Kumulierte Sonnenstunden je Monat")
+
+p_Sonnenstunden_jahr_monat
+```
+
+
+
+
 # 5. Anwendung naiver Modelle
 
 # 6. Anwendung statistischer Modelle: Lineare Regression
 
-# 7. Anwendung von Machine Learning Verfahren: Decision Trees
+# 6 Anwendung statistischer Modelle - Lineare Regression
+
+## 6.1 Vorhaben
+In einem nächsten Schritt wird mit der linearen Regression ein traditionelles statistisches Modell zur Prognose der Besucherzahlen eingesetzt. Die lineare Regression ist ein sehr einfacher Ansatz für das sog. "überwachte Lernen" (supervised learning). Lineare Regressionsmodelle sind insbesondere ein nützliches Werkzeug zur Vorhersage einer quantitativen Output-Variable, die in diesem Fall den Besuchern bzw. der Anzahl verkaufter Tickets pro Tag entspricht. Auch wenn die lineare Regression im Vergleich modernen statistischen Lernmethoden ein vergleichsweise einfaches Modell ist, ist sie immer noch weit verbreitet. Überdies dient sie als guter Ausgangspunkt für neuere Ansätze: viele neuere statistische Lernansätze können als Generalisierung oder Erweiterung der linearen Regression betrachtet werden.
+
+Im Allgemeinen ist bei der linearen Regression zwischen der einfachen und der multiplen Regression zu unterscheiden. Während im ersten Fall nur eine einzelne Variable als Vorhersageparameter für die abhängige Variable betrachtet wird, werden bei der multiplen linearen Regression mehrere Input-Variablen in das Modell einbezogen. Da hinsichtlich der beeinflussenden Variablen Unterschiede bei den einzelnen Warengruppen zu erwarten sind, werden die Warengruppen isoliert betrachtet. Das heißt, für jede Warengruppe werden unterschiedliche Modelle angwendet und verglichen.  
+
+Insgesamt wird Vorgehen wird in mehreren Stufen untergliedert: Zunächst wird auf Basis des allumfassenden Datensatzes `df_voll` ein Datensatz für die Anwendung der linearen Modelle (`df_lm`) erstellt und dieser sodann in einen Trainings- und einen Testdatensatz aufgeteilt. In einem nächsten Schritt werden mittels sog. *best subset selection* und *stepwise selection* die in das Modell aufzunehmenden Variablen bestimmt und auf dieser Grundlage dann ein Regressionsmodell erstellt.
+
+## 6.2 Datenaufbereitung
+
+Wir arbeiten mit dem vollständigen Datensatz `df_complete`. Dieser enthält im Zeitraum 29.05.2015 bis 14.03.2020 eine Zeile für jedes Datum mit Ausnahme des 24.12. eines jeden Jahres. 
+
+Für unser Vorhaben beschränken wir uns auf die Rohdaten im Zeitraum 2016 - 2019. Das Jahr 2015 zeigt nicht erklärbare Unregelmäßigkeiten in den daten und diese sind zudem sehr lückenhaft. Weiterhin wird der Datensatz in zwei komplementäre Datensätze aufgeteilt: die Trainingsdaten beinhalten den Zeitraum 2016 bis 2018. Die Besucherzahlen des Jahres 2019 dienen uns dann als Testdaten.
+
+Der Ticketverlauf in diesem Zeitraum sieht wie folgt aus:
+
+
+```{r}
+# Tickets
+Ticketverlauf <- df_complete %>% filter(Jahr >= 2016 & Jahr <= 2019)
+
+Ticketverlauf$Datum <- as.Date(Ticketverlauf$Datum, format = "%Y-%m-%d", tz = "UTC")
+
+ggplot(Ticketverlauf, aes(x = Datum)) +
+  labs(title = "Besucherzahlen im Europäischen Hansemuseum Lübeck 2016 - 2019") +
+  xlab("Datum") + ylab("Tickets") +
+  geom_line(aes(y = Tickets), color = "blue") +
+  scale_x_date(date_labels = "%Y %b %d") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+
+Es wird für diesen Abschnitt ein Arbeitsdatensatz `df_lm` auf Basis von `df_complete` erstellt. Redundanzen werden entfernt: der Datensatz enthält sowohl für die Monate als auch für die Wochentage jeweils eine numerische und eine character-Variable. Die numerischen sind für die linearen Modelle unbrauchbar, da dann den eigentlich nominalen Variablen Zahlenwerte zugeordnet würden, die im Rahmen der linearen Modelle auch interpretiert würden. Das würde dazu führen, dass bspw. der Dezember 12x so hoch wie der Januar ist. Insofern werden die numerischen Variablen für Monat und Wochentag entfernt.
+
+```{r}
+df_lm <- df_complete %>%
+  select(-Umsatz, -Wochentag, -Monat, -Fruehling, -Sommer, -Herbst, -Winter)
+df_lm_train <- df_lm %>% filter(Jahr >= 2016 & Jahr <= 2018) 
+df_lm_train <- na.omit(df_lm_train)
+df_lm_test <- df_lm %>% filter(Jahr == 2019)
+df_lm_test <- na.omit(df_lm_test)
+```
+
+### 6.2.1 Überprüfung auf lineare Abhängigkeiten der Variablen
+
+Für die Erstellung linearer Modelle dürfen keine linearen Abhängigkeiten zwischen den einzelnen Variablen bestehen. Zunächst ist also zu prüfen, zwischen welchen Variablen lineare Abhängigkeiten bestehen:
+
+```{r}
+alias(lm(Tickets ~., data = df_lm_train))
+```
+Erwartungsgemäß gibt es eine lineare Abhängigkeit zwischen der Variable `Wochentag` und der Variable `Wochentag_C`. Die Variable Wochenende wird daher entfernt.
+
+```{r}
+df_lm_train <- df_lm_train %>% select(-Wochenende)
+df_lm_test <- df_lm_test %>% select(-Wochenende)
+
+# Erneute Überprüfung:
+alias(lm(Tickets ~., data = df_lm_train))
+```
+
+Nun liegen keine linearen Abhängigkeiten mehr vor.
+
+### 6.2.3 Überprüfung auf Multikollinearität
+
+Bei der multiplen Regression können zwei oder mehr Prädiktorvariablen miteinander korreliert sein. Diese Situation wird als Kollinearität bezeichnet.
+
+Es gibt eine extreme Situation, die als Multikollinearität bezeichnet wird und in der Kollinearität zwischen drei oder mehr Variablen besteht, selbst wenn kein Variablenpaar eine besonders hohe Korrelation aufweist. Dies bedeutet, dass zwischen Prädiktorvariablen Redundanz besteht.
+
+Bei Vorhandensein von Multikollinearität wird die Lösung des Regressionsmodells instabil.
+
+Multikollinearität kann auf zwei verschiedene Arten überprüft werden:
+
+* Zum einen kann die Multikollinearität für einen gegebenen Prädiktor (p) bewertet werden, indem ein Score berechnet wird, der als Varianzinflationsfaktor (oder VIF) bezeichnet wird und misst, wie stark die Varianz eines Regressionskoeffizienten aufgrund der Multikollinearität im Modell aufgeblasen wird,
+* zum anderen anhand der Korrelationen der Variablen untereinander.
+
+Der kleinstmögliche Wert von VIF ist eins (Fehlen von Multikollinearität). Als Faustregel gilt, dass ein VIF-Wert, der 5 oder 10 überschreitet, ein problematisches Maß an Kollinearität anzeigt (James et al. 2014).
+
+Bei Multikollinearität sollten die betroffenen Variablen entfernt werden, da das Vorhandensein von Multikollinearität impliziert, dass die Informationen, die diese Variable über die Antwort liefert, bei Vorhandensein der anderen Variablen redundant sind (James et al. 2014, P. Bruce und Bruce (2017)).
+
+**Erstellung eines ersten Regressionsmodells**
+
+Um eine Überprüfung auf Multikollinearität durchzuführen, wird ein Regressionsmodell erstellt, das alle unabhängigen Variablen enthält:
+
+```{r}
+library(caret)
+# Erstellung des Modells
+model1 <- lm(Tickets ~., data = df_lm_train)
+# Vorhersagen
+predictions <- model1 %>% predict(df_lm_test)
+# Modellperformance
+data.frame(
+  RMSE = RMSE(predictions, df_lm_test$Tickets),
+  R2 = R2(predictions, df_lm_test$Tickets)
+)
+```
+
+Der R^2-Wert ist mit ~ 0.28 noch niedrig; der RMSE beträgt 112.9983.
+
+**Überprüfung auf Multikollinearität**
+
+*Überprüfung mittels VIF*
+
+Die R-Funktion `vif()` [`car package`] kann genutzt werden um Multikollinearität zu erkennen:
+```{r}
+library(car)
+car::vif(model1)
+```
+
+Der VIF-Wert für die Variablen `Datum` und `Jahr` sind sehr hoch (VIF = 38.229527 respektive 36.050411). Dies könnte problematisch sein. Insofern sollten die Variablen entfernt werden. Dies würde zu einem einfacheren Modell führen, ohne die Modellgenauigkeit zu beeinträchtigen, was gut ist.
+
+Die Variable `Jahr` wird entfernt. 
+
+```{r}
+df_lm_train <- df_lm_train %>% select(-Jahr)
+df_lm_test <- df_lm_test %>% select(-Jahr)
+```
+
+
+*Überprüfung durch Korrelation:*
+
+Die Korrelationen nach Pearson können in R einfach über den Befehl `cor()` berechnet werden. Hier sollte kein Wert größer als .7 sein.
+
+```{r}
+df_lm_train %>% 
+  dplyr::select(-Datum, -Tickets, -Wochentag_c, -Monat_c, -Jahreszeit) %>%
+  cor()
+```
+
+Einige der unabhängigen Variablen weisen mittelstarke bis starke Korrelationen auf (alle Korrelationen >=0.5):
+
+* SommerferienBaW und SommerferienBY: 0.940481170
+* SommerferienBaW und SommerferienNRW: 0.671462422
+* SommerferienBaW und SommerferienSH: 0.746160392
+* SommerferienBY und SommerferienNRW: 0.60914016  
+* SommerferienBY und SommerferienSH: 0.68209943
+* SommerferienHE und SommerferienNDS: 0.65207342
+* SommerferienHE und SommerferienNRW: 0.60619326
+* SommerferienHE und SommerferienSH: 0.60619326
+* SommerferienNRW und SommerferienSH: 0.76530296 
+* Ostern und Ostern_ext: 0.629826982
+* Tmax und Tmittel 0.979165574
+* Tmax und Tmin: 0.866194219
+* Tmax und Tminboden: 0.792324890
+* Tmax und Sonnenstunden:  0.599215355
+* Tmin und Tmittel: 0.93886102
+* Tmin und Tminboden: 0.87521829
+
+
+Da die Einflussvariablen mitunter stark korrelieren und die empfohlene Grenze von .7 teilweise stark überschreiten, muss in Erwägung gezogen werden, auch einige der stark miteinander korrelierten Variablen zu eliminieren, da bspw. die schrittweise Regression bei Multikollinearität versagt. Zunächst werden die Tatsache, dass einzelne Variablen stark untereinander korrelieren, jedoch ignoriert. Eine sich doch als notwendig abzeichnende Eliminierung weiterer Variablen erfolgt ggf. zu einem späteren Zeitpunkt.
+
+///////////////////////////////**Umgang mit Multikollinearität**
+
+In diesem Abschnitt, wird das Modell erneut erstellt. Dieses Mal zunächst nur ohne die beiden problematischen Variablen `Datum` und `Jahr`.
+
+df_lm_train <- df_lm_train %>% select(-Datum)
+df_lm_test <- df_lm_test %>% select(-Datum, -Jahr)
+# Modellbildung ohne die beiden Variablen
+model2 <- lm(Umsatz ~., data = df_lm_train)
+# Make predictions
+predictions <- model2 %>% predict(df_lm_test)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, df_lm_test$Umsatz),
+  R2 = R2(predictions, df_lm_test$Umsatz)
+)
+
+Man kann sehen, dass das Entfernen der beiden Variablen `Datum` und `Jahr` die Modellleistungsmetriken nicht sehr beeinflusst (RMSE inkl. `Datum` und `Jahr`: 125.8987, R2: 0.1522406). Mit anderen Worten, die Modellgenauigkeit leidet nur marginal unter dem Entfernen der beiden Variablen.///////////////////////////////
+
+## 6.3 Erstellung linearer Regressionsmodelle 
+
+**Laden der benötigten Pakete**
+
+Wir beginnen unsere Analyse mit dem Laden der notwendigen Pakete, die bislang noch nicht geladen wurden:
+
+* `caret` für einen einfachen Machine Learning workflow
+* `leaps` für die Berechnung einer schrittweisen Regression
+
+```{r}
+library(caret)
+library(leaps)
+```
+
+### 6.3.1 Auswahl der am besten geeigneten Variablen
+
+
+**Schrittweise Auswahl ("Stepwise selection")**
+
+Aus rechnerischen Gründen kann die beste Teilmengenauswahl nicht angewendet werden, wenn die Anzahl der $p$ Prädiktorvariablen groß ist. Die Auswahl der besten Teilmenge kann auch unter statistischen Problemen leiden, wenn $p$ groß ist. Je größer der Suchraum ist, desto höher ist die Wahrscheinlichkeit, Modelle zu finden, die in den Trainingsdaten gut aussehen, auch wenn sie möglicherweise keine Vorhersagekraft für zukünftige Daten haben. Ein enormer Suchraum kann daher zu einer Überanpassung und einer hohen Varianz der Koeffizientenschätzungen führen. Aus diesen beiden Gründen sind schrittweise Methoden, die einen weitaus eingeschränkteren Satz von Modellen untersuchen, attraktive Alternativen zur Auswahl der besten Teilmenge.
+
+*Vorwärtsauswahl*
+
+Die *schrittweise Vorwärtsauswahl* beginnt mit einem Modell, das keine Prädiktoren enthält und fügt dem Modell dann nacheinander Prädiktoren hinzu, bis alle Prädiktoren im Modell enthalten sind. Insbesondere wird bei jedem Schritt die Variable zum Modell hinzugefügt, die die größte zusätzliche Verbesserung der Anpassung bewirkt.
+
+Der dreistufige Prozess der schrittweisen Vorauswahl umfasst:
+
+**Schritt 1**: Bezeichne $M_0$ das Nullmodell, das keine Prädiktoren enthält. Dieses Modell sagt einfach den Stichprobenmittelwert für jede Beobachtung voraus.
+
+**Schritt 2**: Für $k = 0,…, p - 1$:
+
+* Betrachte alle $p - k$- Modelle, die die Prädiktoren in $M_k$ mit einem zusätzlichen Prädiktor erweitern. 
+* Wähle das beste unter diesen $p - k$-Modellen aus und nenne es $M_[_k_+_1]$. Hier wird das beste Modell als das mit dem kleinsten $RSS$ oder dem höchstes $R^2$ definiert.
+
+*+Schritt 3**: Wähle aus $M_0,..., M_p$ unter Verwendung eines kreuzvalidierten Vorhersagefehlers, $C_p$, $AIC$, $BIC$ oder dem adjustierten $R^2$ ein einzelnes bestes Modell aus.
+
+Die schrittweise Vorwärtsauswahl kann mit `regsubsets` durchgeführt werden, indem die `method = "forward"` gesetzt wird:
+
+```{r}
+forward <- regsubsets(Tickets ~ ., df_lm_train, nvmax = 29, method = "forward")
+```
+
+
+*Schrittweise rückwärts (Backward stepwise)*
+
+Die *schrittweise Rückwärtsauswahl* bietet eine effiziente Alternative zur Auswahl der besten Teilmenge. Im Gegensatz zur schrittweisen Vorwärtsauswahl beginnt sie jedoch mit dem vollständigen Modell der kleinsten Quadrate, das alle $p$ Prädiktoren enthält und entfernt dann iterativ den am wenigsten nützlichen Prädiktor nacheinander.
+
+Der dreistufige Prozess der schrittweisen Vorauswahl umfasst:
+
+*Schritt 1**: Bezeichne $M_p$ das vollständige Modell, das alle p Prädiktoren enthält.
+
+*Schritt 2:** Für $k = p, p - 1,..., 1$
+
+* Betrachte alle $k$ Modelle, die alle bis auf einen der Prädiktoren in $M_k$ enthalten für insgesamt $k - 1$ Prädiktoren.
+
+* Wähle das beste unter den $k$ Modellen aus und nenne es $M_k_1$. Hier wird das beste Modell als das mit den kleinsten $RSS$ oder den höchsten $R^2$ definiert.
+
+*Schritt 3**: Wähle aus $M_0,…, Mp$ ein einzelnes bestes Modell aus unter Verwendung eines kreuzvalidierten Vorhersagefehlers, $C_p$, $AIC$, $BIC$ oder adjustiertem $R^2$.
+
+Die schrittweise Vorwärtsauswahl kann mit `regsubsets` durchgeführt werden, indem die `method = "backward"` gesetzt wird:
+
+```{r}
+backward <- regsubsets(Tickets ~ ., df_lm_train, nvmax = 50, method = "backward")
+```
+
+
+**Modellauswahl**
+
+Bisher wurde gezeigt, wie die schrittweisen Verfahren ausgeführt werden. In einem nächsten Schritt wird nun betrachtet, wie alle Modelle verglichen werden können, um das beste Modell zu ermitteln. 
+
+Um das beste Modell in Bezug auf den Testfehler auszuwählen, müssen wir diesen Testfehler schätzen. Es gibt zwei gängige Ansätze:
+
+* Der Testfehler kann indirekt geschätzt werden, indem der Trainingsfehler angepasst wird, um die Verzerrung aufgrund von Überanpassung (Overfitting) zu berücksichtigen.
+* Der Testfehler kann direkt abgeschätzt werden, indem entweder ein Validierungssatzansatz oder einen Kreuzvalidierungsansatz verwendet wird.
+
+Wir betrachten im Folgenden beide Ansätze.
+
+
+### Indirekte Schätzung des Testfehlers mit $C_p$, $AIC$, $BIC$ und adjustiertem $R^2$
+
+Bei der Durchführung der Ansätze "beste Teilmenge" oder schrittweisen Annäherung werden die ausgewählten Modelle $M_0,…, M_p$ basierend auf der Tatsache ausgewählt, dass sie den mittleren quadratischen Fehler (MSE) des Trainingssatzes minimieren. Aus diesem Grund und aufgrund der Tatsache, dass die Verwendung der Trainings-$MSE$ und $R^2$ unsere Ergebnisse beeinflusst, sollten wir diese Statistiken nicht verwenden, um zu bestimmen, welche der $M0,…, Mp$ Modelle "das Beste" ist.
+
+Es stehen jedoch eine Reihe von Techniken zum Anpassen des Trainingsfehlers an die Modellgröße zur Verfügung. Diese Ansätze können verwendet werden, um aus einer Reihe von Modellen mit unterschiedlicher Anzahl von Variablen auszuwählen. Diese beinhalten:
+
+![](Guetekriterien_lm.png)
+
+Dabei ist $d$ die Anzahl der Prädiktoren und $s2$ eine Schätzung der Varianz des Fehlers ($?$)) mit jeder Antwortmessung in einem Regressionsmodell verbunden. Jede dieser Statistiken fügt dem Trainings-$RSS$ eine Strafe hinzu, um die Tatsache auszugleichen, dass der Trainingsfehler dazu neigt, den Testfehler zu unterschätzen. Die Strafe steigt eindeutig mit zunehmender Anzahl von Prädiktoren im Modell.
+
+Daher liefern diese Statistiken eine unvoreingenommene Schätzung der Test-MSE. Wenn wir unser Modell unter Verwendung eines Trainings- / Testvalidierungsansatzes durchführen, können wir diese Statistiken verwenden, um das bevorzugte Modell zu bestimmen. Diese Statistiken sind in der Ausgabe der Funktion `regsubsets` enthalten. 
+
+Im Folgenden werden diese Informationen extrahiert und aufgezeichnet.
+
+```{r}
+# Welches Modell minimiert den Cp?
+which.min(summary(forward)$cp)
+which.min(summary(backward)$cp)
+
+# Welches Modell minimiert den BIC?
+which.min(summary(forward)$bic)
+which.min(summary(backward)$bic)
+```
+
+Wenn man das optimale $C_p$ für vorwärts und rückwärts schrittweise bewertet, ist erkennbar, dass gemäß der Vorwärts-Methode ein 27-Variablen-Modell die $C_p$-Statistik minimiert. Die Rückwärtsmethode schlägt ein 29-Variablen-Modell vor.
+
+Folgende 27 Variablen werden gemäß der forward-Methode einbezogen:
+```{r}
+coef(forward, 27)
+```
+
+* Datum
+* Feiertag
+* JahreszeitSommer
+* JahreszeitWinter
+* Ostern_ext
+* Pfingsten
+* Pfingsten_ext
+* Silvester_ext
+* SommerferienHE
+* SommerferienNRW
+* TDE
+* Tmax
+* Tmittel
+* Tmin
+* Tminboden
+* Windmax_BF
+* Niederschlag
+* Sonnenstunden
+* Wochentag_cMontag
+* Wochentag_cSamstag 
+* Wochentag_cSonntag
+* Monat_cAugust
+* Monat_cDezember
+* Monat_cFebruar
+* Monat_cJanuar
+* Monat_cMärz
+* Monat_cNovember
+
+Folgende 21 Variablen werden gemäß der forward-Methode einbezogen:
+```{r}
+coef(forward, 21)
+```
+* Datum
+* Feiertag
+* JahreszeitWinter
+* Ostern_ext
+* Pfingsten
+* Silvester_ext
+* SommerferienHE
+* SommerferienNRW 
+* Tmax
+* Tmittel 
+* Tminboden
+* Windmax_BF
+* Niederschlag
+* Sonnenstunden
+* Wochentag_cMontag
+* Wochentag_cSamstag
+* Wochentag_cSonntag
+* Monat_cAugust
+* Monat_cDezember
+* Monat_cJanuar
+* Monat_cNovember
+
+Betrachtet man das 33-Variablen-Modell der backward stepwise-Methode, ergibt sich, dass alle 29 Variablen einbezogen werden:
+```{r}
+coef(backward, 33)
+```
+* Datum
+* ChristiHimmelfahrt
+* ChristiHimmelfahrt_ext
+* Feiertag
+* JahreszeitHerbst
+* JahreszeitSommer
+* JahreszeitWinter
+* Ostern_ext
+* Pfingsten
+* Pfingsten_ext
+* Silvester_ext
+* SommerferienHE
+* SommerferienNRW
+* Weihnachten
+* Tmax
+* Tmin
+* Tminboden
+* Windmax_BF
+* Niederschlag
+* Sonnenstunden
+* Wochentag_cFreitag
+* Wochentag_cMontag
+* Wochentag_cSamstag
+* Wochentag_cSonntag
+* Monat_cAugust
+* Monat_cDezember
+* Monat_cFebruar
+* Monat_cJanuar
+* Monat_cJuli
+* Monat_cJuni
+* Monat_cMai
+* Monat_cOktober
+* Monat_cSeptember
+
+Betrachtet man das 29-Variablen-Modell der backward stepwise-Methode, ergibt sich, dass alle 29 Variablen einbezogen werden:
+```{r}
+coef(backward, 23)
+```
+
+* Datum
+* Feiertag
+* JahreszeitHerbst
+* JahreszeitWinter
+* Ostern_ext
+* Pfingsten
+* Silvester_ext
+* SommerferienHE
+* Tmax
+* Windmax_BF
+* Niederschlag
+* Sonnenstunden
+* Wochentag_cMontag
+* Wochentag_cSamstag
+* Wochentag_cSonntag
+* Monat_cAugust
+* Monat_cDezember
+* Monat_cJanuar
+* Monat_cJuli
+* Monat_cJuni
+* Monat_cMai
+* Monat_cOktober
+* Monat_cSeptember
+
+Vergleicht man die beiden Modelle, ergibt sich folgendes Bild:
+
+![](Daten/Modellvergleich_forward_backward.png)
+
+> Auffällig ist, dass beim Modell nach der forward-Methode eher kühlere/kältere Monate einbezogen werden, während im Modell nach der backward-Methode eher die wärmeren/warmen Monate einbezogen werden. 
+
+Die vier Modelle werden im Folgenden miteinander verglichen. 
+
+**Teilmengenauswahl für das 27-Variablen-Modell forward selection**
+
+Die 27 Variablen gemäß stepwise forward selection sind die folgenden:
+
+* Datum
+* Feiertag
+* JahreszeitSommer
+* JahreszeitWinter
+* Ostern_ext
+* Pfingsten
+* Pfingsten_ext
+* Silvester_ext
+* SommerferienHE
+* SommerferienNRW
+* TDE
+* Tmax
+* Tmittel
+* Tmin
+* Tminboden
+* Windmax_BF
+* Niederschlag
+* Sonnenstunden
+* Wochentag_cMontag
+* Wochentag_cSamstag 
+* Wochentag_cSonntag
+* Monat_cAugust
+* Monat_cDezember
+* Monat_cFebruar
+* Monat_cJanuar
+* Monat_cMärz
+* Monat_cNovember
+
+Die Variablen Wochentag_c, Monat_c und Jahreszeit müssen nun noch dummyfiziert werden (bei Einbeziehung aller Variablen erfolgt die Dummyfizierung automatisch im Rahmen der Regressionsanalyse): Für jeden Wochentag wird eine Variable mit Ausprägung 0/1 gebildet und danach die alte Variable Wochentag_c entfernt. Analog wird bei den beiden anderen Variablen vorgegangen.
+
+```{r}
+# Dummyfizierung der Variablen im Trainigsdatensatz:
+df_lm_train <- df_lm_train %>%
+  mutate(Montag=as.integer(df_lm_train$Wochentag_c=="Montag")) %>%
+  mutate(Dienstag=as.integer(df_lm_train$Wochentag_c=="Dienstag")) %>%
+  mutate(Mittwoch=as.integer(df_lm_train$Wochentag_c=="Mittwoch")) %>%
+  mutate(Donnerstag=as.integer(df_lm_train$Wochentag_c=="Donnerstag")) %>%
+  mutate(Freitag=as.integer(df_lm_train$Wochentag_c=="Freitag")) %>%
+  mutate(Samstag=as.integer(df_lm_train$Wochentag_c=="Samstag")) %>%
+  mutate(Sonntag=as.integer(df_lm_train$Wochentag_c=="Sonntag")) %>%
+  mutate(Januar=as.integer(df_lm_train$Monat_c=="Januar")) %>%
+  mutate(Februar=as.integer(df_lm_train$Monat_c=="Februar")) %>%
+  mutate(Maerz=as.integer(df_lm_train$Monat_c=="Maerz")) %>%
+  mutate(April=as.integer(df_lm_train$Monat_c=="April")) %>%
+  mutate(Mai=as.integer(df_lm_train$Monat_c=="Mai")) %>%
+  mutate(Juni=as.integer(df_lm_train$Monat_c=="Juni")) %>%
+  mutate(Juli=as.integer(df_lm_train$Monat_c=="Juli")) %>%
+  mutate(August=as.integer(df_lm_train$Monat_c=="August")) %>%
+  mutate(September=as.integer(df_lm_train$Monat_c=="September")) %>%
+  mutate(Oktober=as.integer(df_lm_train$Monat_c=="Oktober")) %>%
+  mutate(November=as.integer(df_lm_train$Monat_c=="November")) %>%
+  mutate(Dezember=as.integer(df_lm_train$Monat_c=="Dezember")) %>%
+  mutate(Fruehling=as.integer(df_lm_train$Jahreszeit=="Fruehling")) %>%
+  mutate(Sommer=as.integer(df_lm_train$Jahreszeit=="Sommer")) %>%
+  mutate(Herbst=as.integer(df_lm_train$Jahreszeit=="Herbst")) %>%
+  mutate(Winter=as.integer(df_lm_train$Jahreszeit=="Winter")) %>%
+  dplyr::select(-Wochentag_c, -Monat_c, -Jahreszeit)
+
+df_lm_test <- df_lm_test %>%
+  mutate(Montag=as.integer(df_lm_test$Wochentag_c=="Montag")) %>%
+  mutate(Dienstag=as.integer(df_lm_test$Wochentag_c=="Dienstag")) %>%
+  mutate(Mittwoch=as.integer(df_lm_test$Wochentag_c=="Mittwoch")) %>%
+  mutate(Donnerstag=as.integer(df_lm_test$Wochentag_c=="Donnerstag")) %>%
+  mutate(Freitag=as.integer(df_lm_test$Wochentag_c=="Freitag")) %>%
+  mutate(Samstag=as.integer(df_lm_test$Wochentag_c=="Samstag")) %>%
+  mutate(Sonntag=as.integer(df_lm_test$Wochentag_c=="Sonntag")) %>%
+  mutate(Januar=as.integer(df_lm_test$Monat_c=="Januar")) %>%
+  mutate(Februar=as.integer(df_lm_test$Monat_c=="Februar")) %>%
+  mutate(Maerz=as.integer(df_lm_test$Monat_c=="Maerz")) %>%
+  mutate(April=as.integer(df_lm_test$Monat_c=="April")) %>%
+  mutate(Mai=as.integer(df_lm_test$Monat_c=="Mai")) %>%
+  mutate(Juni=as.integer(df_lm_test$Monat_c=="Juni")) %>%
+  mutate(Juli=as.integer(df_lm_test$Monat_c=="Juli")) %>%
+  mutate(August=as.integer(df_lm_test$Monat_c=="August")) %>%
+  mutate(September=as.integer(df_lm_test$Monat_c=="September")) %>%
+  mutate(Oktober=as.integer(df_lm_test$Monat_c=="Oktober")) %>%
+  mutate(November=as.integer(df_lm_test$Monat_c=="November")) %>%
+  mutate(Dezember=as.integer(df_lm_test$Monat_c=="Dezember")) %>%
+  mutate(Fruehling=as.integer(df_lm_test$Jahreszeit=="Fruehling")) %>%
+  mutate(Sommer=as.integer(df_lm_test$Jahreszeit=="Sommer")) %>%
+  mutate(Herbst=as.integer(df_lm_test$Jahreszeit=="Herbst")) %>%
+  mutate(Winter=as.integer(df_lm_test$Jahreszeit=="Winter")) %>%
+  dplyr::select(-Wochentag_c, -Monat_c, -Jahreszeit)
+```
+
+
+Für das 27-Variablenmodell der stepwise forward selection wird nun ein Regressionsmodell erstellt:
+```{r}
+lm_f27_train <- lm(Tickets ~ Datum + Feiertag + Sommer + Winter + Ostern_ext + Pfingsten + Pfingsten_ext + Silvester_ext +
+SommerferienHE + SommerferienNRW + TDE + Tmax + Tmittel + Tmin + Tminboden + Windmax_BF + Niederschlag + Sonnenstunden +
+Montag + Samstag + Sonntag + August + Dezember + Februar + Januar + Maerz + November, data = df_lm_train)
+
+library(broom)
+glance(lm_f27_train)
+```
+
+Dann wird (die Modellgüte) anhand der *Test*-Stichprobe getestet:
+
+```{r}
+lm_f27_predict <- predict(lm_f27_train, newdata = df_lm_test)
+```
+
+Als Ergebnis wird ein Vektor erzeugt, der für jede Beobachtung des Test-Samples die geschätzte (vorhergesagte) Anzahl Tickets speichert. Die Gütewerte lassen sich mit `caret::postResample` ausgeben:
+```{r}
+caret::postResample(pred = lm_f27_predict, obs = df_lm_test$Tickets)
+```
+```{r}
+daily_tickets <- data.frame( Date = df_lm_test$Datum, Values = df_lm_test$Tickets, LinReg = lm_f27_predict)
+ggplot() +
+  labs(title = "Lineare Regression: Prognose der Anzahl verkaufter Tickets im Jahr 2019") +
+  xlab("Datum") + ylab("Verkaufte Tickets") +
+  geom_line(data = daily_tickets, aes(y = Values, x = Date, color = "blue")) +
+  geom_line(data = daily_tickets, aes(y = LinReg, x = Date, color = "orange")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  scale_color_manual(name = "Legende", values = c("blue" = "blue", "orange" = "orange"), labels = c("Tatsächlich verkaufte Tickets", "Prognosewerte der Linearen Regression"))
+```
+
+**Teilmengenauswahl für das 27-Variablen-Modell forward selection**
+
+* Datum
+* Feiertag
+* JahreszeitWinter
+* Ostern_ext
+* Pfingsten
+* Silvester_ext
+* SommerferienHE
+* SommerferienNRW 
+* Tmax
+* Tmittel 
+* Tminboden
+* Windmax_BF
+* Niederschlag
+* Sonnenstunden
+* Wochentag_cMontag
+* Wochentag_cSamstag
+* Wochentag_cSonntag
+* Monat_cAugust
+* Monat_cDezember
+* Monat_cJanuar
+* Monat_cNovember
+
+Für das 21-Variablenmodell der stepwise forward selection wird nun ein Regressionsmodell erstellt:
+```{r}
+lm_f21_train <- lm(Tickets ~ Datum + Feiertag + Winter + Ostern_ext + Pfingsten + Silvester_ext +
+SommerferienHE + SommerferienNRW + Tmax + Tmittel + Tminboden + Windmax_BF + Niederschlag + Sonnenstunden +
+Montag + Samstag + Sonntag + August + Dezember + Januar + November, data = df_lm_train)
+
+library(broom)
+glance(lm_f21_train)
+```
+
+Dann wird (die Modellgüte) anhand der *Test*-Stichprobe getestet:
+
+```{r}
+lm_f21_predict <- predict(lm_f21_train, newdata = df_lm_test)
+```
+
+Als Ergebnis wird ein Vektor erzeugt, der für jede Beobachtung des Test-Samples die geschätzte (vorhergesagte) Anzahl Tickets speichert. Die Gütewerte lassen sich mit `caret::postResample` ausgeben:
+```{r}
+caret::postResample(pred = lm_f21_predict, obs = df_lm_test$Tickets)
+```
+
+```{r}
+daily_tickets <- data.frame( Date = df_lm_test$Datum, Values = df_lm_test$Tickets, LinReg = lm_f21_predict)
+ggplot() +
+  labs(title = "Lineare Regression: Prognose der Anzahl verkaufter Tickets im Jahr 2019") +
+  xlab("Datum") + ylab("Verkaufte Tickets") +
+  geom_line(data = daily_tickets, aes(y = Values, x = Date, color = "blue")) +
+  geom_line(data = daily_tickets, aes(y = LinReg, x = Date, color = "orange")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  scale_color_manual(name = "Legende", values = c("blue" = "blue", "orange" = "orange"), labels = c("Tatsächlich verkaufte Tickets", "Prognosewerte der Linearen Regression"))
+```
+**Teilmengenauswahl für das 33-Variablen-Modell nach stepwise backward selection**
+
+* Datum
+* ChristiHimmelfahrt
+* ChristiHimmelfahrt_ext
+* Feiertag
+* JahreszeitHerbst
+* JahreszeitSommer
+* JahreszeitWinter
+* Ostern_ext
+* Pfingsten
+* Pfingsten_ext
+* Silvester_ext
+* SommerferienHE
+* SommerferienNRW
+* Weihnachten
+* Tmax
+* Tmin
+* Tminboden
+* Windmax_BF
+* Niederschlag
+* Sonnenstunden
+* Wochentag_cFreitag
+* Wochentag_cMontag
+* Wochentag_cSamstag
+* Wochentag_cSonntag
+* Monat_cAugust
+* Monat_cDezember
+* Monat_cFebruar
+* Monat_cJanuar
+* Monat_cJuli
+* Monat_cJuni
+* Monat_cMai
+* Monat_cOktober
+* Monat_cSeptember
+
+
+Für das 33-Variablenmodell der stepwise backward selection wird nun ein Regressionsmodell erstellt:
+```{r}
+lm_b33_train <- lm(Tickets ~ Datum + ChristiHimmelfahrt + ChristiHimmelfahrt_ext + Feiertag + Herbst + Sommer + Winter + Ostern_ext + Pfingsten + Pfingsten_ext + Silvester_ext + SommerferienHE + SommerferienNRW + Weihnachten + Tmax + Tmin + Tminboden + Windmax_BF + Niederschlag + Sonnenstunden + Freitag + Montag + Samstag + Sonntag + August + Dezember + Februar + Januar + Juli + Juni + Mai + Oktober + September, data = df_lm_train)
+
+library(broom)
+glance(lm_b33_train)
+```
+
+Dann wird (die Modellgüte) anhand der *Test*-Stichprobe getestet:
+
+```{r}
+lm_b33_predict <- predict(lm_b33_train, newdata = df_lm_test)
+```
+
+Als Ergebnis wird ein Vektor erzeugt, der für jede Beobachtung des Test-Samples die geschätzte (vorhergesagte) Anzahl Tickets speichert. Die Gütewerte lassen sich mit `caret::postResample` ausgeben:
+```{r}
+caret::postResample(pred = lm_b33_predict, obs = df_lm_test$Tickets)
+```
+
+```{r}
+daily_tickets <- data.frame( Date = df_lm_test$Datum, Values = df_lm_test$Tickets, LinReg = lm_b33_predict)
+ggplot() +
+  labs(title = "Lineare Regression: Prognose der Anzahl verkaufter Tickets im Jahr 2019") +
+  xlab("Datum") + ylab("Verkaufte Tickets") +
+  geom_line(data = daily_tickets, aes(y = Values, x = Date, color = "blue")) +
+  geom_line(data = daily_tickets, aes(y = LinReg, x = Date, color = "orange")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  scale_color_manual(name = "Legende", values = c("blue" = "blue", "orange" = "orange"), labels = c("Tatsächlich verkaufte Tickets", "Prognosewerte der Linearen Regression"))
+```
+**Teilmengenauswahl für das 23-Variablen-Modell nach stepwise backward selection**
+
+* Datum
+* Feiertag
+* JahreszeitHerbst
+* JahreszeitWinter
+* Ostern_ext
+* Pfingsten
+* Silvester_ext
+* SommerferienHE
+* Tmax
+* Windmax_BF
+* Niederschlag
+* Sonnenstunden
+* Wochentag_cMontag
+* Wochentag_cSamstag
+* Wochentag_cSonntag
+* Monat_cAugust
+* Monat_cDezember
+* Monat_cJanuar
+* Monat_cJuli
+* Monat_cJuni
+* Monat_cMai
+* Monat_cOktober
+* Monat_cSeptember
+
+Für das 23-Variablenmodell der stepwise backward selection wird nun ein Regressionsmodell erstellt:
+```{r}
+lm_b23_train <- lm(Tickets ~ Datum + Feiertag + Herbst + Winter + Ostern_ext + Pfingsten + Silvester_ext + SommerferienHE + Tmax + Windmax_BF + Niederschlag + Sonnenstunden + Montag + Samstag + Sonntag + August + Dezember + Januar + Juli + Juni + Mai + Oktober + September, data = df_lm_train)
+
+library(broom)
+glance(lm_b23_train)
+```
+
+Dann wird (die Modellgüte) anhand der *Test*-Stichprobe getestet:
+
+```{r}
+lm_b23_predict <- predict(lm_b23_train, newdata = df_lm_test)
+```
+
+Als Ergebnis wird ein Vektor erzeugt, der für jede Beobachtung des Test-Samples die geschätzte (vorhergesagte) Anzahl Tickets speichert. Die Gütewerte lassen sich mit `caret::postResample` ausgeben:
+```{r}
+caret::postResample(pred = lm_b23_predict, obs = df_lm_test$Tickets)
+```
+
+```{r}
+daily_tickets <- data.frame( Date = df_lm_test$Datum, Values = df_lm_test$Tickets, LinReg = lm_b23_predict)
+ggplot() +
+  labs(title = "Lineare Regression: Prognose der Anzahl verkaufter Tickets im Jahr 2019") +
+  xlab("Datum") + ylab("Verkaufte Tickets") +
+  geom_line(data = daily_tickets, aes(y = Values, x = Date, color = "blue")) +
+  geom_line(data = daily_tickets, aes(y = LinReg, x = Date, color = "orange")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  scale_color_manual(name = "Legende", values = c("blue" = "blue", "orange" = "orange"), labels = c("Tatsächlich verkaufte Tickets", "Prognosewerte der Linearen Regression"))
+```
+
+# 7. Anwendung von Machine Learning Verfahren: Decision Trees (Entscheidungsbäume)
+
+## 7.1 Vorhaben
+
+In einem weiteren Schritt wird mit den Entscheidungsbäumen ein erstes Machine Learning-Verfahren angewendet. 
+
+Entscheidungsbäume stellen, allgemein gesprochen, Entscheidungen und deren Konsequenzen in einer baumähnlichen Struktur dar. Dabei stellen die Prüfungen die "Astgabeln" oder "Knoten" (nodes) dar, die "Äste" die Entscheidungen der Prüfungen und die "Blätter" des Baumes repräsentieren die Entscheidung des Modells. Entscheidungsbäume können sowohl für Klassifikations- als auch für numerische Vorhersagemodelle verwendet werden.
+
+Grundlegende Entscheidungsbäume unterteilen einen Datensatz in kleinere Gruppen und passen dann für jede Untergruppe ein einfaches Modell (Konstante) an. Leider ist ein einzelnes Baummodell in der Regel sehr instabil und ein schlechter Prädiktor. Durch Bootstrap-Aggregation (Bagging) von Entscheidungsbäumen kann diese Technik jedoch sehr leistungsfähig und effektiv werden. Darüber hinaus bildet dies die grundlegende Grundlage für komplexere baumbasierte Modelle wie Random Forests ("zufällige Wälder") und sog. gradient boosting machines ("Maschinen zur Erhöhung des Gradienten").
+
+In diesem Projekt werden nur Entscheidungsbäume und Tuning behandelt.
+
+**Die Idee**
+
+Es gibt viele Methoden zur Konstruktion von Entscheidungsbäumen, aber eine der ältesten ist der von Breiman et al. entwickelte Klassifizierungs- und Regressionsbaumansatz (CART). (1984). Dieses Projekt konzentriert sich auf den Regressionsteil von CART. Grundlegende Entscheidungs- bzw. Regressionsbäume unterteilen einen Datensatz in kleinere Untergruppen und passen dann für jede Beobachtung in der Untergruppe eine einfache Konstante an. Die Partitionierung wird durch aufeinanderfolgende binäre Partitionen (auch als rekursive Partitionierung bezeichnet) auf der Grundlage der verschiedenen Prädiktoren erreicht. Die vorherzusagende Konstante basiert auf den durchschnittlichen Antwortwerten für alle Beobachtungen, die in diese Untergruppe fallen.
+
+Nehmen wir zum Beispiel an, wir möchten die Umsatz pro Tag einer Bäckereifiliale basierend auf Wochentagen, Jahreszeit, Ferien, ... vorhersagen. Alle Beobachtungen gehen durch diesen Baum, werden an einem bestimmten Knoten bewertet und gehen nach links, wenn die Antwort "Ja" lautet, oder nach rechts, wenn die Antwort "Nein" lautet. Alle Beobachtungen mit Samstag oder Sonntag gehen also zum linken Zweig, alle anderen Beobachtungen zum rechten Zweig. Als nächstes wird der linke Zweig weiter nach der Jahreszeit aufgeteilt. Diese Samstag- oder Sonntag-Beobachtungen mit der Jahreszeit Sommer gehen zum linken Zweig über, diejenigen mit Frühling, Herbst oder Winter gehen nach rechts. Und so weiter. Diese Zweige führen abschließend zu Endknoten oder Blättern, die unseren vorhergesagten Umsatz pro Tag enthalten. 
+
+**Über Splits entscheiden**
+
+Erstens ist es wichtig zu erkennen, dass die Partitionierung von Variablen von oben nach unten erfolgt. Dies bedeutet, dass sich eine früher in der Baumstruktur ausgeführte Partition nicht aufgrund späterer Partitionen ändert. 
+
+Aber wie werden diese Partitionen hergestellt? Das Modell beginnt mit dem gesamten Datensatz $S$ und durchsucht jeden einzelnen Wert jeder Eingabevariablen, um den Prädiktor und den Teilungswert zu finden, der die Daten in zwei Regionen unterteilt ($R_1$ und $R_2$) derart, dass die Gesamtsummen der Fehlerquadrate minimiert werden:
+
+$$minimiere(SSE = \sum_{i \epsilon R_1}(y_i-c_1)^2+\sum_{i \epsilon R_2}(y_i-c_2)^2 \tag{1}$$
+
+Nachdem wir die beste Aufteilung gefunden haben, teilen wir die Daten in die beiden resultierenden Regionen auf und wiederholen den Aufteilungsprozess für jede der beiden Regionen. Dieser Vorgang wird fortgesetzt, bis ein Stoppkriterium erreicht ist. Das Ergebnis ist in der Regel ein sehr tiefer, komplexer Baum, der zwar gute Vorhersagen für den Trainingssatz liefert, die Daten jedoch wahrscheinlich überpasst, was zu einer schlechten Leistung bei unsichtbaren Daten führt.
+
+Durch Beschneiden dieser Entscheidungsknoten auf niedrigerer Ebene können wir ein wenig Verzerrung in unser Modell einbringen, die zur Stabilisierung von Vorhersagen beiträgt und dazu neigt, besser auf neue, unsichtbare Daten zu verallgemeinern.
+
+**Kostenkomplexitätskriterium**
+
+In der Tiefe und Komplexität des Baums muss häufig ein Gleichgewicht erreicht werden, um die Vorhersageleistung für einige unsichtbare Daten zu optimieren. Um dieses Gleichgewicht zu finden, bilden wir normalerweise einen sehr großen Baum, wie im vorherigen Abschnitt definiert, und beschneiden ihn dann, um einen optimalen Teilbaum zu finden. Wir finden den optimalen Teilbaum unter Verwendung eines Kostenkomplexitätsparameters ($\alpha$), der unsere Zielfunktion (s. (1)) für die Anzahl der Endknoten des Baumes ($T$) "bestraft":
+
+$$minimiere(SSE+\alpha{|T|}) \tag{2}$$
+
+Für einen gegebenen Wert von $\alpha$ finden wir den kleinsten beschnittenen Baum mit dem niedrigsten bestraften Fehler. Dabei führen kleinere Strafen tendenziell zu komplexeren Modellen, was zu größeren Bäumen führt, während größere Strafen zu viel kleineren Bäumen führen. Wenn ein Baum größer wird, muss folglich die Verringerung der $SSE$ größer sein als die Kostenkomplexitätsstrafe. Typischerweise bewerten wir mehrere Modelle über ein Spektrum von $\alpha$ und verwenden die Kreuzvalidierung, um das optimale $\alpha$ und damit den optimalen Teilbaum zu identifizieren
+
+**Laden notwendiger packages**
+
+Für das Vorhaben werden die nachfolgenden packages benötigt und somit geladen. Die meisten dieser packages/Pakete spielen eine unterstützende Rolle, während der Schwerpunkt auf dem `rpart`-package liegt.
+
+```{r}
+# already loaded: library(dplyr)       # data wrangling
+library(rpart)       # Performing von Regression Trees
+library(rpart.plot)  # Plotten von Regression Trees
+#library(ipred)       # Ggf. für bagging
+```
+
+## 7.2 Datenaufbereitung
+
+Wir arbeiten mit dem vollständigen Datensatz `df_voll`. Dieser enthält im Zeitraum 01.07.2013 bis 31.07.2019 eine Zeile für jedes Datum und jede Warengruppe. In den Rohdaten fehlende Umsätze sind auf Basis der Vorwochenwerte ergänzt worden. Die Zeilen mit ergänzten Umsätzen sind selektierbar über die Variable Umsatz_NA (= TRUE).
+
+Für unser Vorhaben beschränken wir uns auf die in den Rohdaten vorhandenen Umsätze (Umsatz_NA = FALSE). Und wir schränken die Trainingsdaten später auf den Zeitraum 2015 bis 2017 ein, weil wir oben gesehen hatten, dass die Umsätze in 2014 systematisch höher liegen als in den folgenden Jahren. Die Umsätze des Jahres 2018 dienen uns dann als Testdaten.
+
+Wir erstellen für diesen Abschnitt einen Analysedatensatz `df_dt` auf Basis von `df_voll`.
+Redundante Spalten nehmen wir raus (Wochentag, Monat, Jahreszeit) und entfernen die nicht benötigten Umsatz-Spalten (Umsatz_NA sowie die Umsatz_lag Variablen).
+
+```{r}
+df_dt <- df_complete
+
+# verwende nur originäre Umsatzdaten und grenze den Zeitraum auf 2015 bis 2018 ein
+df_dt <- df_dt %>% 
+  filter(Jahr >= 2016 & Jahr <= 2019)
+
+# behalte nur die Spalten, die wir für den DT verwenden wollen
+df_dt <- df_dt %>%
+  dplyr::select(-Wochentag, -Monat, -Jahreszeit, -Umsatz)
+```
+
+Weiterhin werden fehlende Werte eleminiert.
+
+```{r}
+# eliminiere fehlende Werte
+df_dt <- na.omit(df_dt)
+```
+
+Für die Trainingsdaten verwenden wir den Zeitraum 2015 bis 2017 und für die Testdaten das Jahr 2018. Die Modellierung erfolgt je Warengruppe, daher teilen wir den Datensatz `df_dt` auf.
+
+```{r}
+df_dt_train <- df_dt %>% filter(Jahr < 2019)
+df_dt_test <- df_dt %>% filter(Jahr == 2019)
+```
+
+## 7.3 Grundlegende Implementierung und Tuning
+
+
+Wir können einen Regressionsbaum mit `rpart` anpassen und ihn dann mit `rpart.plot` visualisieren. Der Anpassungsprozess und die visuelle Ausgabe von Regressionsbäumen und Klassifizierungsbäumen sind sehr ähnlich. Beide verwenden die Formelmethode zum Ausdrücken des Modells (ähnlich wie `lm`). Wenn wir jedoch einen Regressionsbaum anpassen, müssen wir `method = "anova"` setzen. Standardmäßig errät `rpart` auf intelligente Weise, welche Methode anzuwenden ist. Es wird jedoch empfohlen, die Methode aus Gründen der Reproduzierbarkeit explizit festzulegen, was wir hier auch tun.
+
+**Grundlegende Implementierung - Warengruppe 1**
+
+Wir beginnen mit Warengruppe 1:
+
+```{r}
+dt1 <- rpart(
+  formula = Tickets ~ .,
+  data    = df_dt_train,
+  method  = "anova"
+  )
+
+dt1
+```
+
+Sobald wir unser Modell angepasst haben, können wir einen Blick auf den dt1_WG1-Output werfen. Dieser erklärt die Schritte der Teilung: Wir beginnen bspw. mit 1061 Beobachtungen am Wurzelknoten (ganz am Anfang) und die erste Variable, die zur Teilung verwendet wird (also die erste Variable, die eine Reduzierung der SSE optimiert), ist der Wochentag Sonntag. Wir sehen, dass am ersten Knoten alle Beobachtungen mit Wochentag_c = Sonntag zum zweiten Zweig gehen. Die Gesamtzahl der Beobachtungen, die diesem Zweig folgen (152), der durchschnittliche Umsatz (70,14) und der SSE (83154.48) sind aufgeführt.
+
+Wenn man nach dem 3. Zweig sucht, sieht man, dass 909 Beobachtungen mit Wochentag_c = Dienstag, Donnerstag, Freitag, Mittwoch, Montag, Samstag diesem Zweig folgen und ihre durchschnittlichen Umsätze 123.49€ betragen und der SSE hier 1109737.00 beträgt.
+
+Grundsätzlich sagt uns dies, dass die wichtigste Variable, die anfangs den größten Rückgang der SSE aufweist, der Wochentag ist, wobei die Umsätze sonntags in der Warengruppe Brot um > 40% geringer sind als an den anderen Tagen der Woche.
+
+Wir können unser Modell mit `rpart.plot` visualisieren. `rpart.plot` bietet viele Plotoptionen, auf die wir an dieser Stelle nicht weiter eingehen werden. Im Standard-Plot werden jedoch der Prozentsatz der Daten angezeigt, die auf diesen Knoten fallen, und der durchschnittliche Umsatz für diesen Zweig. 
+
+```{r}
+rpart.plot(dt1)
+
+library(partykit)
+plot(as.party(dt1))
+```
+
+Man kann feststellen, dass dieser Baum 11 interne Knoten enthält, was zu 12 Endknoten führt. Grundsätzlich partitioniert dieser Baum in 11 Variablen, um sein Modell zu erstellen. Es gibt jedoch 28 Variablen in `df_dt_train_WG1`. Also was ist passiert?
+
+Hinter den Kulissen wendet `rpart` automatisch einen Bereich von Kostenkomplexität an ($\alpha$-Werte zum Beschneiden des Baums). Um den Fehler für jeden $\alpha$-Wert zu vergleichen, führt `rpart` eine 10-fache Kreuzvalidierung durch, sodass der mit einem bestimmten $\alpha$-Wert verbundene Fehler berechnet wird. 
+
+```{r}
+plotcp(dt1)
+```
+
+In diesem Beispiel finden wir abnehmende Renditen nach 12 Endknoten, wie in der Grafik dargestellt (y-Achse ist Kreuzvalidierungsfehler, untere x-Achse ist Kostenkomplexitätswert ($\alpha$), obere x-Achse ist die Anzahl von Endknoten (Baumgröße = | T |)). Die gestrichelte Linie, die zwischen den Punkten | T | = 3 und 4 verläuft, deutet darauf hin, dass auch ein kleiner Baum gewählt werden kann. Breiman et al. (1984) schlugen vor, dass es in der Praxis üblich ist, den kleinsten Baum innerhalb von 1 Standardabweichung des minimalen Kreuzvalidierungsfehlers zu verwenden (auch bekannt als 1-SE-Regel). Daher könnten wir auch einen Baum mit 3 oder 4 Endknoten verwenden und vernünftigerweise erwarten, dass innerhalb einer kleinen Fehlergrenze ähnliche Ergebnisse erzielt werden.
+
+```{r}
+dt1$cptable
+```
+
+**Tuning - Warengruppe 1**
+
+Neben dem Kostenkomplexität ($\alpha$)-Parameter ist es auch üblich folgende Parameter anzupassen:
+
+* `minsplit`: Die Mindestanzahl von Datenpunkten, die erforderlich sind, um eine Teilung zu versuchen, bevor ein Endknoten erstellt werden muss. Der Standardwert ist 20. Wenn man diesen Wert verkleinert, können Endknoten, die möglicherweise nur eine Handvoll Beobachtungen enthalten, erstellt werden um den vorhergesagten Wert zu prognostizieren. 
+* `maxdepth`: Die maximale Anzahl interner Knoten zwischen dem Wurzelknoten und den Endknoten. Der Standardwert ist 30, was ziemlich liberal ist und das Bauen ziemlich großer Bäume ermöglicht.
+
+`rpart` verwendet ein spezielles Steuer- bzw. Kontrollargument, bei dem eine Liste von Hyperparameterwerten bereitgestellt wird. Wenn wir beispielsweise ein Modell mit `minsplit` = 20 und `maxdepth` = 12 bewerten möchten, können wir Folgendes ausführen:
+
+```{r}
+dt2 <- rpart(
+    formula = Tickets ~ .,
+    data    = df_dt_train,
+    method  = "anova", 
+    control = list(minsplit = 20, maxdepth = 10, xval = 10)
+)
+
+dt2$cptable
+```
+
+Obwohl dieser Ansatz nützlich ist, müssen mehrere Modelle manuell bewertet werden. Besser ist es insofern eine Rastersuche durchzuführen, um automatisch nach einer Reihe unterschiedlich abgestimmter Modelle zu suchen, um die optimale Hyperparametereinstellung zu ermitteln.
+
+Um eine Rastersuche durchzuführen, erstellen wir zuerst unser Hyperparameter-Raster. In diesem Beispiel suchen wir einen Bereich von `minsplit` von 5 bis 150 und variiere die maximale Tiefe von 8 bis 15 (da unser ursprüngliches Modell eine optimale Tiefe von 12 gefunden hat). Das Ergebnis sind 1168 verschiedene Kombinationen, für die 1168 verschiedene Modelle erforderlich sind.
+
+```{r}
+hyper_grid <- expand.grid(
+  minsplit = seq(5, 150, 1),
+  maxdepth = seq(8, 15, 1)
+)
+
+head(hyper_grid)
+##   minsplit maxdepth
+## 1        5        8
+## 2        6        8
+## 3        7        8
+## 4        8        8
+## 5        9        8
+## 6       10        8
+
+# Gesamtanzahl aller Kombinationen
+nrow(hyper_grid)
+## [1] 1168
+```
+
+Um die Modellierung zu automatisieren, richten wir einfach eine `for`-Schleife ein und durchlaufen jede Kombination aus `minsplit` und `maxdepth`. Wir speichern jedes Modell in einem eigenen Listenelement.
+
+```{r}
+models <- list()
+
+for (i in 1:nrow(hyper_grid)) {
+  
+  # minsplit, maxdepth values in Zeile i
+  minsplit <- hyper_grid$minsplit[i]
+  maxdepth <- hyper_grid$maxdepth[i]
+
+  # Trainiere ein modell und speichere es in der Liste
+  models[[i]] <- rpart(
+    formula = Tickets ~ .,
+    data    = df_dt_train,
+    method  = "anova",
+    control = list(minsplit = minsplit, maxdepth = maxdepth)
+    )
+}
+```
+
+Wir können jetzt eine Funktion erstellen, um den minimalen Fehler zu extrahieren, der mit dem α-Wert der optimalen Kostenkomplexität für jedes Modell verbunden ist. 
+
+```{r}
+# Funktion um den optimalen cp zu erreichen
+get_cp <- function(x) {
+  min    <- which.min(x$cptable[, "xerror"])
+  cp <- x$cptable[min, "CP"] 
+}
+
+# Funktion um den minimalen Fehler zu erhalten
+get_min_error <- function(x) {
+  min    <- which.min(x$cptable[, "xerror"])
+  xerror <- x$cptable[min, "xerror"] 
+}
+
+hyper_grid %>%
+  mutate(
+    cp    = purrr::map_dbl(models, get_cp),
+    error = purrr::map_dbl(models, get_min_error)
+    ) %>%
+  arrange(error) %>%
+  top_n(-5, wt = error)
+## minsplit  maxdepth   cp      error
+##       51	       14	0.01	0.6055641	
+##       70     	 10	0.01	0.6061298	
+##        9	       14	0.01	0.6149394	
+##       81	        8	0.01	0.6154432	
+##       92	       11	0.01	0.6165628	
+```
+
+Es ist erkennbar, dass das optimale Modell eine leichte Verbesserung gegenüber unserem früheren Modell darstellt (xerror von 0.599 gegenüber 0.643).
+
+Wenn die Ergebnisse zufriedenstellend sind, kann dieses endgültige optimale Modell angewendet werden und auf dem Testsatz vorhersagen. 
+
+```{r}
+optimal_tree <- rpart(
+    formula = Tickets ~ .,
+    data    = df_dt_train,
+    method  = "anova",
+    control = list(minsplit = 32, maxdepth = 11, cp = 0.01)
+    )
+
+pred <- predict(optimal_tree, newdata = df_dt_test)
+RMSE(pred = pred, obs = df_dt_test$Tickets)
+```
+
+Der endgültige RMSE beträgt 117.84, was darauf hindeutet, dass unsere prognostizierten Umsätze im Durchschnitt etwa 117.84 Tickets von der tatsächlichen Anzahl verkaufter Tickets abweichen.
+
+```{r}
+daily_tickets <- data.frame( Date = df_dt_test$Datum, Values = df_dt_test$Tickets, DT = pred)
+ggplot() +
+  labs(title = "Entscheidungsbaum: Prognose der Anzahl verkaufter Tickets im Jahr 2019") +
+  xlab("Datum") + ylab("Verkaufte Tickets") +
+  geom_line(data = daily_tickets, aes(y = Values, x = Date, color = "blue")) +
+  geom_line(data = daily_tickets, aes(y = DT, x = Date, color = "orange")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(colour = "black")) +
+  scale_color_manual(name = "Legende", values = c("blue" = "blue", "orange" = "orange"), labels = c("Tatsächlich verkaufte Tickets", "Prognosewerte des Entscheidungsbaums"))
+```
+
+
+Um das Modell abschließend mit den anderen vergleichen zu können, wird eine Tabelle mit den zu untersuchenden Kennzahlen erstellt:
+```{r}
+# Hinzufügen der Ergebnisse
+df_dt_test_WG1 <- df_dt_test_WG1 %>%
+  mutate(predicted = pred)
+
+# ergänze Prognose_zuhoch (TRUE / FALSE), Abweichung (Schätzer - Umsatz), absolute Abweichung (Abweichung_abs), relative Abweichung (Abweichung_rel), quadratische Abweichung (Abweichung_quad)
+df_dt_test_WG1 <- df_dt_test_WG1 %>%
+  mutate(Prognose_zuhoch = (predicted >= Umsatz)) %>%
+  mutate(Abweichung = predicted - Umsatz) %>%
+  mutate(Abweichung_abs = abs(predicted - Umsatz)) %>%
+  mutate(Abweichung_rel = (predicted - Umsatz) / Umsatz) %>%
+  mutate(Abweichung_quad = Abweichung^2)
+
+# Ergänze die benötigten Hilfsgrößen
+df_dt_test_WG1 <- df_dt_test_WG1 %>%
+  mutate(Abweichung_rel_abs = abs(Abweichung_rel), Abweichung_rel_abs_mult_umsatz = Abweichung_rel_abs * Umsatz)
+
+# Prognosegüte: mittlere Abweichung, mittlere absolute / relative Abweichung, mittlere quadratische Abweichung
+temp <- df_dt_test_WG1 %>%
+  group_by() %>%
+  summarise(Anzahl=n(), Umsatz_ges = round(sum(Umsatz), 2), Umsatz_mittel = round(sum(Umsatz)/n(), 2), MAE = round(mean(Abweichung_abs), 2), MPE = round(mean(Abweichung_rel)*100, 2), MAPE = round(mean(Abweichung_rel_abs)*100, 2), WAPE = round(sum(Abweichung_rel_abs_mult_umsatz)/sum(Umsatz)*100, 2), MSE = round(mean(Abweichung_quad), 2), RMSE = round(sqrt(mean(Abweichung_quad)), 2), rRMSE = round(RMSE/Umsatz_mittel*100, 2))
+
+# füge das Modell hinzu
+temp <- temp %>% mutate(Modell = "optimaltree_WG1")
+
+# füge die Kennzahlen nun an die Vergleichstabelle
+dt_vgl_kennz <- temp
+dt_vgl_kennz
+```
+
 
 # 8. Anwendung von Machine Learning Verfahren: Support Vector Machines
 
